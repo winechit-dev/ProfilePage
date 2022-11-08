@@ -23,11 +23,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import coil.compose.rememberImagePainter
 import com.catalin.profilepage.ui.theme.ProfilePageTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.lifecycleScope
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +42,7 @@ class MainActivity : ComponentActivity() {
             ProfilePageTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
-                    ProfileScreen()
+                    ProfileScreen(lifecycleScope)
                 }
             }
         }
@@ -44,7 +50,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(lifecycleScope: LifecycleCoroutineScope) {
 
     val notification = rememberSaveable { mutableStateOf("") }
     if (notification.value.isNotEmpty()) {
@@ -73,7 +79,7 @@ fun ProfileScreen() {
                 modifier = Modifier.clickable { notification.value = "Profile updated" })
         }
 
-        ProfileImage()
+        ProfileImage(lifecycleScope)
 
         Row(
             modifier = Modifier
@@ -135,18 +141,25 @@ fun ProfileScreen() {
 }
 
 @Composable
-fun ProfileImage() {
+fun ProfileImage(lifecycleScope: LifecycleCoroutineScope) {
+    val context = LocalContext.current
     val imageUri = rememberSaveable { mutableStateOf("") }
-    val painter = rememberImagePainter(
-        if (imageUri.value.isEmpty())
-            R.drawable.ic_user
-        else
-            imageUri.value
-    )
+
+    val painter = if (imageUri.value.isEmpty())
+        rememberAsyncImagePainter(model = R.drawable.ic_user)
+    else
+        networkImagePainter(url = imageUri.value)
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { imageUri.value = it.toString() }
+        uri?.let {
+            lifecycleScope.launch(Dispatchers.Main) {
+                val file = it.getFile(context)
+                val compressFile = context.compressFile(file)
+                imageUri.value = compressFile.toString()
+            }
+        }
     }
 
     Column(
@@ -174,10 +187,23 @@ fun ProfileImage() {
     }
 }
 
+@Composable
+fun networkImagePainter(
+    url: String,
+): Painter = rememberAsyncImagePainter(
+    model = ImageRequest.Builder(LocalContext.current)
+        .data(url)
+        .crossfade(true)
+        .placeholder(R.color.purple_200)
+        .build(),
+    contentScale = ContentScale.Crop
+)
+
+
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
     ProfilePageTheme {
-        ProfileScreen()
+        // ProfileScreen(lifecycleScope = )
     }
 }
